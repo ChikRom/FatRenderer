@@ -1,0 +1,15 @@
+# Build output
+bin/
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# IDE/editor stuff (optional)
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
