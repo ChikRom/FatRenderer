@@ -35,12 +35,17 @@ private:
 	vk::raii::Context					context;
 	vk::raii::Instance					instance = nullptr;
 	vk::raii::DebugUtilsMessengerEXT	debugMessenger = nullptr;
+	vk::raii::SurfaceKHR				surface = nullptr;
 	vk::raii::PhysicalDevice			physicalDevice = nullptr;
 	vk::raii::Device					device = nullptr;
 	vk::raii::Queue						graphicsQueue = nullptr;
-	vk::raii::SurfaceKHR				surface = nullptr;
+	vk::raii::SwapchainKHR				swapChain = nullptr;
+	std::vector<vk::Image>				swapChainImages;
+	vk::SurfaceFormatKHR				swapChainSurfaceFormat;
+	vk::Extent2D						swapChainExtent;
+	std::vector<vk::ImageView>			swapChainImageViews;
 	// add the device extension for checking
-	std::vector<const char* > requiredDeviceExtension = { vk::KHRSwapchainExtensionName };
+	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
 	void initVulkan();
 	void mainLoop();
@@ -51,5 +56,10 @@ private:
 	void createLogicalDevice();
 	bool isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice);
 	void createSurface();
+	void createSwapChain();
+	vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats);
+	vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes);
+	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);
+	uint32_t chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities);
 	std::vector<const char*> getRequiredInstanceExtensions();
 };
