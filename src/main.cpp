@@ -1,4 +1,4 @@
-﻿#include "TriangleApp.h"
+﻿#include "TriangleApp.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -10,6 +10,7 @@ int main() {
         TriangleApp app;
         app.run();
     }
+
     catch (const std::exception e)
     {
         std::cerr << e.what() << std::endl;

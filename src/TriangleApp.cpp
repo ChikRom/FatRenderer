@@ -1,4 +1,4 @@
-#include "TriangleApp.h"
+#include "TriangleApp.hpp"
 #include <iostream>
 
 // callback function
@@ -102,6 +102,39 @@ void TriangleApp::initVulkan()
 	pickPhysicalDevice();
 	createLogicalDevice();
 	createSwapChain();
+	createImageViews();
+}
+
+void TriangleApp::createImageViews()
+{
+	assert(swapChainImageViews.empty());
+
+	vk::ImageViewCreateInfo imageViewCreateInfo
+	{
+		.viewType = vk::ImageViewType::e2D,
+		.format = swapChainSurfaceFormat.format
+	};
+
+	imageViewCreateInfo.components =
+	{
+		vk::ComponentSwizzle::eIdentity,
+		vk::ComponentSwizzle::eIdentity,
+		vk::ComponentSwizzle::eIdentity,
+		vk::ComponentSwizzle::eIdentity
+	};
+
+	imageViewCreateInfo.subresourceRange =
+	{
+		.aspectMask = vk::ImageAspectFlagBits::eColor,
+		.levelCount = 1,
+		.layerCount = 1
+	};
+
+	for (auto& image : swapChainImages)
+	{
+		imageViewCreateInfo.image = image;
+		swapChainImageViews.emplace_back(device, imageViewCreateInfo);
+	}
 }
 
 void TriangleApp::createSurface()

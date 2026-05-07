@@ -43,7 +43,7 @@ private:
 	std::vector<vk::Image>				swapChainImages;
 	vk::SurfaceFormatKHR				swapChainSurfaceFormat;
 	vk::Extent2D						swapChainExtent;
-	std::vector<vk::ImageView>			swapChainImageViews;
+	std::vector<vk::raii::ImageView>			swapChainImageViews;
 	// add the device extension for checking
 	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
@@ -57,6 +57,7 @@ private:
 	bool isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice);
 	void createSurface();
 	void createSwapChain();
+	void createImageViews();
 	vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats);
 	vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes);
 	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);

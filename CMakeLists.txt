@@ -15,6 +15,7 @@ file (GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS "src/*.h" "src/*.hpp")
 
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
 
+
 # include additional files
 target_include_directories(${PROJECT_NAME} PRIVATE 
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -35,6 +36,10 @@ target_compile_definitions(VulkanCppPCH INTERFACE
 target_include_directories(VulkanCppPCH INTERFACE "${Vulkan_INCLUDE_DIR}")
 target_link_libraries(VulkanCppPCH INTERFACE Vulkan::Vulkan)
 
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+	glfw3
+	Vulkan::cppm)
+
 target_precompile_headers(VulkanCppPCH INTERFACE
 	<vulkan/vulkan.hpp>
 )
@@ -43,6 +48,4 @@ target_precompile_headers(VulkanCppPCH INTERFACE
 target_link_directories(${PROJECT_NAME} PRIVATE 
     "${CMAKE_CURRENT_SOURCE_DIR}/lib"
 )
-target_link_libraries(${PROJECT_NAME} PRIVATE 
-	glfw3
-	Vulkan::cppm)
+
