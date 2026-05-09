@@ -15,6 +15,35 @@ file (GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS "src/*.h" "src/*.hpp")
 
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
 
+# find slangc compiler for shaders and and our shaders for compiling
+find_program(SLANGC_EXECUTABLE slangc REQUIRED)
+set(SHADER_SLANG_SOURCES
+	${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.slang
+)
+
+# create function for compiling slang shaders
+function (add_slang_shader_target TARGET)
+	# parse list of shader sources and assign them ${SHADER_SOURCES} macro
+	cmake_parse_arguments("SHADER" "" "" "SOURCES" ${ARGN})
+	# set the output directory, entry point for compiled shaders
+	set(SHADERS_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+	set(ENTRY_POINTS -entry vertMain -entry fragMain)
+	set(OUTPUT_SPV ${SHADERS_OUT_DIR}/slang.spv)
+
+	# make output directory and compile shaders
+	file(MAKE_DIRECTORY ${SHADERS_OUT_DIR})
+	add_custom_command(
+		OUTPUT ${OUTPUT_SPV}
+		COMMAND ${SLANGC_EXECUTABLE} ${SHADER_SOURCES} -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name ${ENTRY_POINTS} -o ${OUTPUT_SPV}
+		DEPENDS ${SHADER_SOURCES}
+		COMMENT "Compiling Slang Shaders"
+		VERBATIM
+	)
+	add_custom_target(${TARGET} DEPENDS ${OUTPUT_SPV})
+endfunction()
+
+add_slang_shader_target(shader_compiling SOURCES ${SHADER_SLANG_SOURCES})
+add_dependencies(FatRenderer shader_compiling)
 
 # include additional files
 target_include_directories(${PROJECT_NAME} PRIVATE 

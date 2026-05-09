@@ -103,6 +103,7 @@ void TriangleApp::initVulkan()
 	createLogicalDevice();
 	createSwapChain();
 	createImageViews();
+	createGraphicsPipeline();
 }
 
 void TriangleApp::createImageViews()
@@ -135,6 +136,29 @@ void TriangleApp::createImageViews()
 		imageViewCreateInfo.image = image;
 		swapChainImageViews.emplace_back(device, imageViewCreateInfo);
 	}
+}
+
+void TriangleApp::createGraphicsPipeline()
+{
+	auto shaderCode = readFile("shaders/slang.spv");
+	std::cout << "The size of the file is: " << shaderCode.size() << std::endl;
+
+	vk::raii::ShaderModule shaderModule = createShaderModule(shaderCode);
+	vk::PipelineShaderStageCreateInfo vertShaderStageInfo
+	{
+		.stage = vk::ShaderStageFlagBits::eVertex,
+		.module = shaderModule,
+		.pName = "vertMain"
+	};
+
+	vk::PipelineShaderStageCreateInfo fragShaderStageInfo
+	{
+		.stage = vk::ShaderStageFlagBits::eFragment,
+		.module = shaderModule,
+		.pName = "fragMain"
+	};
+
+	vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo , fragShaderStageInfo };
 }
 
 void TriangleApp::createSurface()
@@ -186,6 +210,17 @@ vk::Extent2D TriangleApp::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& cap
 		std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
 		std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
 	};
+}
+
+[[nodiscard]] vk::raii::ShaderModule TriangleApp::createShaderModule(const std::vector<char>& code) const
+{
+	vk::ShaderModuleCreateInfo shaderModuleCreateInfo
+	{
+		.codeSize = code.size() * sizeof(char),
+		.pCode = reinterpret_cast<const uint32_t*>(code.data())
+	};
+	vk::raii::ShaderModule shaderModule(device, shaderModuleCreateInfo);
+	return shaderModule;
 }
 
 uint32_t TriangleApp::chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities)
@@ -259,11 +294,12 @@ void TriangleApp::createLogicalDevice()
 
 	// Create a chain of additional device features
 	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
-					   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain =
+					   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceVulkan11Features> featureChain =
 	{
 		{},
 		{.dynamicRendering = true},
-		{.extendedDynamicState = true}
+		{.extendedDynamicState = true},
+		{.shaderDrawParameters = true}
 	};
 
 	// Create the logical device
