@@ -157,8 +157,68 @@ void TriangleApp::createGraphicsPipeline()
 		.module = shaderModule,
 		.pName = "fragMain"
 	};
-
 	vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo , fragShaderStageInfo };
+
+	vk::PipelineVertexInputStateCreateInfo inputVertexInfo;
+
+	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo
+	{
+		.topology = vk::PrimitiveTopology::eTriangleList
+	};
+
+	vk::PipelineViewportStateCreateInfo viewportStateCreateInfo
+	{
+		.viewportCount = 1,
+		.scissorCount = 1
+	};
+
+	vk::PipelineRasterizationStateCreateInfo rasterizerStateInfo
+	{
+		.depthClampEnable = vk::False,
+		.rasterizerDiscardEnable = vk::False,
+		.polygonMode = vk::PolygonMode::eFill,
+		.cullMode = vk::CullModeFlagBits::eBack,
+		.frontFace = vk::FrontFace::eClockwise,
+		.depthBiasEnable = vk::False,
+		.lineWidth = 1.0f
+	};
+
+	vk::PipelineMultisampleStateCreateInfo multisamplingStateInfo
+	{
+		.rasterizationSamples = vk::SampleCountFlagBits::e1,
+		.sampleShadingEnable = vk::False
+	};
+
+	vk::PipelineColorBlendAttachmentState colourBlendAttachmentState
+	{
+		.blendEnable = vk::False,
+		.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+						  vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
+	};
+
+	vk::PipelineColorBlendStateCreateInfo colourBlendStateInfo
+	{
+		.logicOpEnable = vk::False,
+		.logicOp = vk::LogicOp::eCopy,
+		.attachmentCount = 1,
+		.pAttachments = &colourBlendAttachmentState
+	};
+
+	std::vector<vk::DynamicState> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+	vk::PipelineDynamicStateCreateInfo dynamicStateInfo
+	{
+		.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+		.pDynamicStates = dynamicStates.data()
+	};
+
+	vk::PipelineLayoutCreateInfo layoutInfo
+	{
+		.setLayoutCount = 0,
+		.pushConstantRangeCount = 0
+	};
+
+	pipelineLayout = vk::raii::PipelineLayout(device, layoutInfo);
+	
 }
 
 void TriangleApp::createSurface()

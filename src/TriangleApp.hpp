@@ -61,6 +61,7 @@ private:
 	vk::SurfaceFormatKHR				swapChainSurfaceFormat;
 	vk::Extent2D						swapChainExtent;
 	std::vector<vk::raii::ImageView>			swapChainImageViews;
+	vk::raii::PipelineLayout			pipelineLayout = nullptr;
 	// add the device extension for checking
 	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
