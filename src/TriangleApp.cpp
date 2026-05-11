@@ -219,6 +219,30 @@ void TriangleApp::createGraphicsPipeline()
 
 	pipelineLayout = vk::raii::PipelineLayout(device, layoutInfo);
 	
+
+
+	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain =
+	{
+		{
+			.stageCount = 2,
+			.pStages = shaderStages,
+			.pVertexInputState = &inputVertexInfo,
+			.pInputAssemblyState = &inputAssemblyInfo,
+			.pViewportState = &viewportStateCreateInfo,
+			.pRasterizationState = &rasterizerStateInfo,
+			.pMultisampleState = &multisamplingStateInfo,
+			.pColorBlendState = &colourBlendStateInfo,
+			.pDynamicState = &dynamicStateInfo,
+			.layout = pipelineLayout,
+			.renderPass = nullptr
+		},
+		{
+			.colorAttachmentCount = 1,
+			.pColorAttachmentFormats = &swapChainSurfaceFormat.format
+		}
+	};
+
+	graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 }
 
 void TriangleApp::createSurface()
