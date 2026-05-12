@@ -104,6 +104,9 @@ void TriangleApp::initVulkan()
 	createSwapChain();
 	createImageViews();
 	createGraphicsPipeline();
+	createCommandPool();
+	createCommandBuffer();
+
 }
 
 void TriangleApp::createImageViews()
@@ -245,6 +248,123 @@ void TriangleApp::createGraphicsPipeline()
 	graphicsPipeline = vk::raii::Pipeline(device, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 }
 
+void TriangleApp::createCommandPool()
+{
+	vk::CommandPoolCreateInfo commandPoolInfo
+	{
+		.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+		.queueFamilyIndex = queueIndex,
+	};
+	commandPool = vk::raii::CommandPool(device, commandPoolInfo);
+}
+
+void TriangleApp::createCommandBuffer()
+{
+	vk::CommandBufferAllocateInfo bufferAllocInfo
+	{
+		.commandPool = commandPool,
+		.level = vk::CommandBufferLevel::ePrimary,
+		.commandBufferCount = 1
+	};
+	commandBuffer = std::move(vk::raii::CommandBuffers(device, bufferAllocInfo).front());
+}
+
+void TriangleApp::transition_image_layout(
+	uint32_t imageIndex,
+	vk::ImageLayout old_layout,
+	vk::ImageLayout new_layout,
+	vk::AccessFlags2 src_access_mask,
+	vk::AccessFlags2 dst_access_mask,
+	vk::PipelineStageFlags2 src_stage_mask,
+	vk::PipelineStageFlags2 dst_stage_mask)
+{
+	vk::ImageMemoryBarrier2 barrier =
+	{
+		.srcStageMask = src_stage_mask,
+		.srcAccessMask = src_access_mask,
+		.dstStageMask = dst_stage_mask,
+		.dstAccessMask = dst_access_mask,
+		.oldLayout = old_layout,
+		.newLayout = new_layout,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = swapChainImages[imageIndex],
+		.subresourceRange = 
+		{
+			.aspectMask = vk::ImageAspectFlagBits::eColor,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1
+		}
+	};
+	vk::DependencyInfo dependencyInfo =
+	{
+		.dependencyFlags = {},
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier
+	};
+	commandBuffer.pipelineBarrier2(dependencyInfo);
+}
+
+void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
+{
+	commandBuffer.begin({});
+
+	transition_image_layout(
+		imageIndex,
+		vk::ImageLayout::eUndefined,
+		vk::ImageLayout::eColorAttachmentOptimal,
+		{},
+		vk::AccessFlagBits2::eColorAttachmentWrite,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput
+	);
+
+	vk::ClearValue clearColour = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
+	vk::RenderingAttachmentInfo attachmentInfo =
+	{
+		.imageView = swapChainImageViews[imageIndex],
+		.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+		.loadOp = vk::AttachmentLoadOp::eClear,
+		.storeOp = vk::AttachmentStoreOp::eStore,
+		.clearValue = clearColour
+	};
+
+	vk::RenderingInfo renderingInfo =
+	{
+		.renderArea = {.offset = {0,0}, .extent = swapChainExtent},
+		.layerCount = 1,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &attachmentInfo
+	};
+
+	commandBuffer.beginRendering(renderingInfo);
+
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+	
+	commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
+	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+	
+	commandBuffer.draw(3, 1, 0, 0);
+
+	commandBuffer.endRendering();
+
+	transition_image_layout(
+		imageIndex,
+		vk::ImageLayout::eColorAttachmentOptimal,
+		vk::ImageLayout::ePresentSrcKHR,
+		vk::AccessFlagBits2::eColorAttachmentWrite,
+		{},
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+		vk::PipelineStageFlagBits2::eBottomOfPipe
+	);
+
+	commandBuffer.end();
+}
+
+
+
 void TriangleApp::createSurface()
 {
 	VkSurfaceKHR rawSurface;
@@ -360,18 +480,18 @@ void TriangleApp::createLogicalDevice()
 		if ((queueFamilyProperties[currIndex].queueFlags & vk::QueueFlagBits::eGraphics) && 
 			physicalDevice.getSurfaceSupportKHR(currIndex, *surface))
 		{
-			graphicsQueueFamilyPropertyIndex = currIndex;
+			queueIndex = currIndex;
 			break;
 		}
 	}
-	if (graphicsQueueFamilyPropertyIndex == ~0)
+	if (queueIndex == ~0)
 		throw std::runtime_error("Failed to find a Graphics and present QueueFamily");
 
 	float queuePriority = 0.5f;
 
 	vk::DeviceQueueCreateInfo deviceQueueCreateInfo
 	{
-		.queueFamilyIndex = graphicsQueueFamilyPropertyIndex,
+		.queueFamilyIndex = queueIndex,
 		.queueCount = 1,
 		.pQueuePriorities = &queuePriority
 	};
@@ -397,7 +517,7 @@ void TriangleApp::createLogicalDevice()
 	};
 	// get handle for our Logical Device and our Queue
 	device = vk::raii::Device(physicalDevice, deviceCreateInfo);
-	graphicsQueue = vk::raii::Queue(device, graphicsQueueFamilyPropertyIndex, 0);
+	graphicsQueue = vk::raii::Queue(device, queueIndex, 0);
 }
 
 void TriangleApp::mainLoop()
