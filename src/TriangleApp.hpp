@@ -66,12 +66,16 @@ private:
 	vk::raii::Pipeline					graphicsPipeline = nullptr;
 	vk::raii::CommandPool				commandPool = nullptr;
 	vk::raii::CommandBuffer				commandBuffer = nullptr;
+	vk::raii::Semaphore					renderFinishedSemaphore = nullptr;
+	vk::raii::Semaphore					presentCompleteSemaphore = nullptr;
+	vk::raii::Fence						drawFence = nullptr;
 	// add the device extension for checking
 	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
 	void initVulkan();
 	void mainLoop();
 	void cleanUp();
+	void drawFrame();
 	void createInstance();
 	void setupDebugMessenger();
 	void pickPhysicalDevice();
@@ -93,6 +97,7 @@ private:
 		vk::PipelineStageFlags2 dst_stage_mask
 	);
 	void recordCommandBuffer(uint32_t imageIndex);
+	void createSyncObjects();
 	vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats);
 	vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes);
 	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);
