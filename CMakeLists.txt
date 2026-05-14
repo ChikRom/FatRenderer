@@ -21,6 +21,8 @@ set(SHADER_SLANG_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.slang
 )
 
+
+
 # create function for compiling slang shaders
 function (add_slang_shader_target TARGET)
 	# parse list of shader sources and assign them ${SHADER_SOURCES} macro
