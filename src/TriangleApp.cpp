@@ -183,6 +183,10 @@ void TriangleApp::setupDebugMessenger()
 	if (!enableValidationLayers)
 		return;
 
+	// set up debugMessenger object with enable certain conditions 
+	// under which this messenger will trigger the callback.
+	// VkDebugUtilsMessageSeverity/MessageFlagsEXT is a bitmask type for setting 
+	// a mask of zero or more VkDebugUtilsMessageSeverity/MessageFlagBitsEXT
 	vk::DebugUtilsMessageSeverityFlagsEXT severityFlags(vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError);
 	vk::DebugUtilsMessageTypeFlagsEXT	  messageTypeFlags(vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance
 		| vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation);
@@ -190,7 +194,7 @@ void TriangleApp::setupDebugMessenger()
 	{
 		.messageSeverity = severityFlags,
 		.messageType = messageTypeFlags,
-		.pfnUserCallback = &debugCallback
+		.pfnUserCallback = &debugCallback // application callback function to call
 	};
 	debugMessenger = instance.createDebugUtilsMessengerEXT(DebugUtilsMessengerCreateInfoEXT);
 }
