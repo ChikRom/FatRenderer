@@ -21,7 +21,10 @@ set(SHADER_SLANG_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/shaders/shader.slang
 )
 
-
+if (MSVC)
+    add_compile_options(/Zi)
+    add_link_options(/DEBUG)
+endif()
 
 # create function for compiling slang shaders
 function (add_slang_shader_target TARGET)

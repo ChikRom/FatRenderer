@@ -201,6 +201,7 @@ void TriangleApp::setupDebugMessenger()
 
 void TriangleApp::createSurface()
 {
+	// At first taking a handler "rawSurface" using glfw for our certain window
 	VkSurfaceKHR rawSurface;
 	if (glfwCreateWindowSurface(*instance, window, nullptr, &rawSurface) != 0)
 	{
@@ -271,7 +272,7 @@ void TriangleApp::createLogicalDevice()
 		}
 	}
 	if (queueIndex == ~0)
-		throw std::runtime_error("Failed to find a Graphics and present QueueFamily");
+		throw std::runtime_error("Failed to find a Graphics QueueFamily with ability for presentation to surface");
 
 	float queuePriority = 0.5f;
 
@@ -308,6 +309,7 @@ void TriangleApp::createLogicalDevice()
 
 void TriangleApp::createSwapChain()
 {
+	// get 
 	vk::SurfaceCapabilitiesKHR surfaceCapabilites = physicalDevice.getSurfaceCapabilitiesKHR(*surface);
 	swapChainExtent = chooseSwapExtent(surfaceCapabilites);
 
