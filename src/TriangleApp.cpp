@@ -467,7 +467,7 @@ void TriangleApp::createGraphicsPipeline()
 	pipelineLayout = vk::raii::PipelineLayout(device, layoutInfo);
 	
 
-
+	// setting up programmable and fixed stages of the pipeline
 	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain =
 	{
 		{
