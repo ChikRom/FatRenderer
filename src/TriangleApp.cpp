@@ -88,7 +88,7 @@ void TriangleApp::initVulkan()
 	createImageViews();
 	createGraphicsPipeline();
 	createCommandPool();
-	createCommandBuffer();
+	createCommandBuffers();
 	createSyncObjects();
 }
 void TriangleApp::createInstance()
@@ -502,22 +502,31 @@ void TriangleApp::createCommandPool()
 	commandPool = vk::raii::CommandPool(device, commandPoolInfo);
 }
 
-void TriangleApp::createCommandBuffer()
+void TriangleApp::createCommandBuffers()
 {
 	vk::CommandBufferAllocateInfo bufferAllocInfo
 	{
 		.commandPool = commandPool,
 		.level = vk::CommandBufferLevel::ePrimary,
-		.commandBufferCount = 1
+		.commandBufferCount = IN_FLIGHT_FRAMES
 	};
-	commandBuffer = std::move(vk::raii::CommandBuffers(device, bufferAllocInfo).front());
+	commandBuffers = vk::raii::CommandBuffers(device, bufferAllocInfo);
 }
 
 void TriangleApp::createSyncObjects()
 {
-	renderFinishedSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-	presentCompleteSemaphore = vk::raii::Semaphore(device, vk::SemaphoreCreateInfo());
-	drawFence = vk::raii::Fence(device, { .flags = vk::FenceCreateFlagBits::eSignaled });
+	assert(renderFinishedSemaphores.empty() && presentCompleteSemaphores.empty() && drawFences.empty());
+
+	for (uint32_t i = 0; i < swapChainImages.size(); i++)
+	{
+		renderFinishedSemaphores.emplace_back(vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()));
+	}
+	for (uint32_t i = 0; i < IN_FLIGHT_FRAMES; i++)
+	{
+		presentCompleteSemaphores.emplace_back(vk::raii::Semaphore(device, vk::SemaphoreCreateInfo()));
+		drawFences.emplace_back(vk::raii::Fence(device, { .flags = vk::FenceCreateFlagBits::eSignaled }));
+	}
+
 }
 
 void TriangleApp::transition_image_layout(
@@ -555,11 +564,13 @@ void TriangleApp::transition_image_layout(
 		.imageMemoryBarrierCount = 1,
 		.pImageMemoryBarriers = &barrier
 	};
-	commandBuffer.pipelineBarrier2(dependencyInfo);
+
+	commandBuffers[frameIndex].pipelineBarrier2(dependencyInfo);
 }
 
 void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 {
+	auto& commandBuffer = commandBuffers[frameIndex];
 	commandBuffer.begin({});
 
 	transition_image_layout(
@@ -668,38 +679,39 @@ void TriangleApp::mainLoop()
 
 void TriangleApp::drawFrame()
 {
-	auto fenceResult = device.waitForFences(*drawFence, vk::True, UINT64_MAX);
+	auto fenceResult = device.waitForFences(*drawFences[frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess)
 	{
 		throw std::runtime_error("failed to wait for fence!");
 	}
-	device.resetFences(*drawFence);
+	device.resetFences(*drawFences[frameIndex]);
 
-	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphore, nullptr);
+	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
 	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 
+	commandBuffers[frameIndex].reset();
 
 	recordCommandBuffer(imageIndex);
 
-	graphicsQueue.waitIdle();
+	//graphicsQueue.waitIdle();
 	const vk::SubmitInfo submitInfo
 	{
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*presentCompleteSemaphore,
+		.pWaitSemaphores = &*presentCompleteSemaphores[frameIndex],
 		.pWaitDstStageMask = &waitDestinationStageMask,
 		.commandBufferCount = 1,
-		.pCommandBuffers = &*commandBuffer,
+		.pCommandBuffers = &*commandBuffers[frameIndex],
 		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &*renderFinishedSemaphore
+		.pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]
 	};
 
-	graphicsQueue.submit(submitInfo, *drawFence);
+	graphicsQueue.submit(submitInfo, *drawFences[frameIndex]);
 
 	const vk::PresentInfoKHR presentInfo
 	{
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &*renderFinishedSemaphore,
+		.pWaitSemaphores = &*renderFinishedSemaphores[imageIndex],
 		.swapchainCount = 1,
 		.pSwapchains = &*swapChain,
 		.pImageIndices = &imageIndex
@@ -718,6 +730,7 @@ void TriangleApp::drawFrame()
 		default:
 			break;
 	}
+	frameIndex = (frameIndex + 1) % IN_FLIGHT_FRAMES;
 }
 void TriangleApp::cleanUp()
 {

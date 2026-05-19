@@ -6,7 +6,7 @@
 
 constexpr uint32_t SCREEN_WIDTH = 800.0f;
 constexpr uint32_t SCREEN_HEIGHT = 600.0f;
-
+constexpr uint32_t IN_FLIGHT_FRAMES = 2;
 
 const std::vector<char const*> validationLayers =
 {
@@ -65,10 +65,11 @@ private:
 	vk::raii::PipelineLayout			pipelineLayout = nullptr;
 	vk::raii::Pipeline					graphicsPipeline = nullptr;
 	vk::raii::CommandPool				commandPool = nullptr;
-	vk::raii::CommandBuffer				commandBuffer = nullptr;
-	vk::raii::Semaphore					renderFinishedSemaphore = nullptr;
-	vk::raii::Semaphore					presentCompleteSemaphore = nullptr;
-	vk::raii::Fence						drawFence = nullptr;
+	std::vector<vk::raii::CommandBuffer>commandBuffers;
+	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
+	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
+	std::vector<vk::raii::Fence>		drawFences;
+	uint32_t frameIndex = 0;
 	// add the device extension for checking
 	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
@@ -86,7 +87,7 @@ private:
 	void createImageViews();
 	void createGraphicsPipeline();
 	void createCommandPool();
-	void createCommandBuffer();
+	void createCommandBuffers();
 	void transition_image_layout(
 		uint32_t	imageIndex,
 		vk::ImageLayout old_layout,
