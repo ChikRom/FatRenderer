@@ -1,3 +1,5 @@
+#define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
+#define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
 
@@ -19,7 +21,7 @@ constexpr bool enableValidationLayers = false;
 constexpr bool enableValidationLayers = true;
 #endif
 
-#define GLFW_INCLUDE_VULKAN
+
 
 static std::vector<char> readFile(const std::string& filename)
 {
@@ -70,6 +72,7 @@ private:
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
 	std::vector<vk::raii::Fence>		drawFences;
 	uint32_t frameIndex = 0;
+	bool frameBufferResized = false;
 	// add the device extension for checking
 	std::vector<const char* > requiredDeviceExtensions = { vk::KHRSwapchainExtensionName };
 	void initWindow();
@@ -99,6 +102,9 @@ private:
 	);
 	void recordCommandBuffer(uint32_t imageIndex);
 	void createSyncObjects();
+	void recreateSwapChain();
+	void cleanupSwapChain();
+	static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
 	vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats);
 	vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes);
 	vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities);

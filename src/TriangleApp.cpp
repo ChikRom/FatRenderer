@@ -72,9 +72,11 @@ void TriangleApp::initWindow()
 	glfwInit();
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 	window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "VULKAN", nullptr, nullptr);
 	glfwSetWindowPos(window, 4200,250);
+	glfwSetWindowUserPointer(window, this);
+	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
 void TriangleApp::initVulkan()
@@ -90,6 +92,24 @@ void TriangleApp::initVulkan()
 	createCommandPool();
 	createCommandBuffers();
 	createSyncObjects();
+}
+
+
+void TriangleApp::mainLoop()
+{
+	while (!glfwWindowShouldClose(window))
+	{
+		glfwPollEvents();
+		drawFrame();
+	}
+	graphicsQueue.waitIdle();
+
+}
+
+void TriangleApp::cleanUp()
+{
+	glfwDestroyWindow(window);
+	glfwTerminate();
 }
 void TriangleApp::createInstance()
 {
@@ -529,6 +549,36 @@ void TriangleApp::createSyncObjects()
 
 }
 
+void TriangleApp::recreateSwapChain()
+{
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(window, &width, &height);
+	while (width == 0 || height == 0)
+	{
+		glfwGetFramebufferSize(window, &width, &height);
+		glfwPollEvents();
+	}
+	device.waitIdle();
+
+	cleanupSwapChain();
+
+	createSwapChain();
+	createImageViews();
+}
+
+void TriangleApp::cleanupSwapChain()
+{
+	swapChainImageViews.clear();
+	swapChain = nullptr;
+
+}
+
+void TriangleApp::framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+	auto app = reinterpret_cast<TriangleApp*>(glfwGetWindowUserPointer(window));
+	app->frameBufferResized = true;
+}
+
 void TriangleApp::transition_image_layout(
 	uint32_t imageIndex,
 	vk::ImageLayout old_layout,
@@ -664,37 +714,35 @@ uint32_t TriangleApp::chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& 
 }
 
 
-
-
-void TriangleApp::mainLoop()
-{
-	while (!glfwWindowShouldClose(window))
-	{
-		glfwPollEvents();
-		drawFrame();
-	}
-	graphicsQueue.waitIdle();
-
-}
-
 void TriangleApp::drawFrame()
 {
+	// wait Fence -> acquireNextImage -> resetFence -> resetBuffer -> recordBuffer
+	// -> set up submitInfo with our buffer -> submit the work to queue -> set up presentInfo
+	// -> queue the image with imageIndexInfo for presentation to surface's platform
 	auto fenceResult = device.waitForFences(*drawFences[frameIndex], vk::True, UINT64_MAX);
 	if (fenceResult != vk::Result::eSuccess)
 	{
 		throw std::runtime_error("failed to wait for fence!");
 	}
-	device.resetFences(*drawFences[frameIndex]);
 
 	auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *presentCompleteSemaphores[frameIndex], nullptr);
 
-	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+	if (result == vk::Result::eErrorOutOfDateKHR)
+	{
+		recreateSwapChain();
+		return;
+	}
+	if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+	{
+		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+		throw std::runtime_error("failed to acquire swap chain image");
+	}
 
+	device.resetFences(*drawFences[frameIndex]);
 	commandBuffers[frameIndex].reset();
-
 	recordCommandBuffer(imageIndex);
 
-	//graphicsQueue.waitIdle();
+	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 	const vk::SubmitInfo submitInfo
 	{
 		.waitSemaphoreCount = 1,
@@ -718,25 +766,19 @@ void TriangleApp::drawFrame()
 	};
 
 	result = graphicsQueue.presentKHR(presentInfo);
-	switch (result)
+
+	if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || frameBufferResized)
 	{
-		case vk::Result::eSuccess:
-			break;
-		case vk::Result::eSuboptimalKHR:
-		{
-			std::cout << "vk::Queue::presentKHR returned vk::Result::eSuboptimalKHR !\n";
-			break;
-		}
-		default:
-			break;
+		frameBufferResized = false;
+		recreateSwapChain();
+	}
+	else
+	{
+		assert(result == vk::Result::eSuccess);
 	}
 	frameIndex = (frameIndex + 1) % IN_FLIGHT_FRAMES;
 }
-void TriangleApp::cleanUp()
-{
-	glfwDestroyWindow(window);
-	glfwTerminate();
-}
+
 
 
 
