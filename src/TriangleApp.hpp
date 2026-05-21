@@ -2,7 +2,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
-
+#include <glm/glm.hpp>
+#include <array>
 #include <vector>
 #include <fstream>
 
@@ -20,6 +21,32 @@ constexpr bool enableValidationLayers = false;
 #else
 constexpr bool enableValidationLayers = true;
 #endif
+
+struct Vertex
+{
+	glm::vec2 positions;
+	glm::vec3 color;
+
+	static vk::VertexInputBindingDescription getBindingDescription()
+	{
+		return { .binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex };
+	};
+	static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+	{
+		return {{
+				   {.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat,	 .offset = offsetof(Vertex, positions)},
+				   {.location = 1, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}
+			   }};
+	};
+};
+
+const std::vector<Vertex> vertices = 
+{
+	{{0.0f, -0.5f }, {1.0f, 0.0f, 0.0f }},
+	{{0.5f, 0.5f }, {0.0f, 1.0f, 0.0f }},
+	{{-0.5f, 0.5f }, {0.0f, 0.0f, 1.0f }}
+};
+
 
 
 
@@ -67,6 +94,8 @@ private:
 	vk::raii::PipelineLayout			pipelineLayout = nullptr;
 	vk::raii::Pipeline					graphicsPipeline = nullptr;
 	vk::raii::CommandPool				commandPool = nullptr;
+	vk::raii::Buffer					vertexBuffer = nullptr;
+	vk::raii::DeviceMemory				vertexBufferMemory = nullptr;
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
@@ -91,6 +120,8 @@ private:
 	void createGraphicsPipeline();
 	void createCommandPool();
 	void createCommandBuffers();
+	void createVertexBuffer();
+	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 	void transition_image_layout(
 		uint32_t	imageIndex,
 		vk::ImageLayout old_layout,

@@ -90,6 +90,7 @@ void TriangleApp::initVulkan()
 	createImageViews();
 	createGraphicsPipeline();
 	createCommandPool();
+	createVertexBuffer();
 	createCommandBuffers();
 	createSyncObjects();
 }
@@ -426,7 +427,16 @@ void TriangleApp::createGraphicsPipeline()
 	};
 	vk::PipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo , fragShaderStageInfo };
 
-	vk::PipelineVertexInputStateCreateInfo inputVertexInfo;
+	auto bindingDescription = Vertex::getBindingDescription();
+	auto attributeDecription = Vertex::getAttributeDescriptions();
+
+	vk::PipelineVertexInputStateCreateInfo inputVertexInfo
+	{
+		.vertexBindingDescriptionCount = 1,
+		.pVertexBindingDescriptions = &bindingDescription,
+		.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDecription.size()),
+		.pVertexAttributeDescriptions = attributeDecription.data(),
+	};
 
 	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo
 	{
@@ -532,6 +542,52 @@ void TriangleApp::createCommandBuffers()
 	};
 	commandBuffers = vk::raii::CommandBuffers(device, bufferAllocInfo);
 }
+
+
+void TriangleApp::createVertexBuffer()
+{
+	// create a vertex buffer for some vertex and color data
+	vk::BufferCreateInfo bufferInfo
+	{
+		.size = sizeof(vertices[0]) * vertices.size(),
+		.usage = vk::BufferUsageFlagBits::eVertexBuffer,
+		.sharingMode = vk::SharingMode::eExclusive
+	};
+	vertexBuffer = vk::raii::Buffer(device, bufferInfo);
+
+	// allocate device memory for that buffer
+	vk::MemoryRequirements memoryRequirements = vertexBuffer.getMemoryRequirements();
+	uint32_t memoryType = findMemoryType(memoryRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible |
+																			vk::MemoryPropertyFlagBits::eHostCoherent);
+	vk::MemoryAllocateInfo memoryAllocateInfo
+	{
+		.allocationSize = memoryRequirements.size,
+		.memoryTypeIndex = memoryType
+	};
+	vertexBufferMemory = vk::raii::DeviceMemory(device, memoryAllocateInfo);
+
+	// copy the vertex and color data into that device memory
+	void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
+	memcpy(data, vertices.data(), bufferInfo.size);
+	vertexBufferMemory.unmapMemory();
+	// and bind the device memory to the vertex buffer
+	vertexBuffer.bindMemory(*vertexBufferMemory, 0);
+}
+
+uint32_t TriangleApp::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
+{
+	vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+
+	for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
+	{
+		if ((typeFilter & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+	throw std::runtime_error("failed to find suitable memory type for vertex buffer");
+}
+
 
 void TriangleApp::createSyncObjects()
 {
@@ -654,11 +710,13 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 	commandBuffer.beginRendering(renderingInfo);
 
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
+
+	commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
 	
 	commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 	
-	commandBuffer.draw(3, 1, 0, 0);
+	commandBuffer.draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
 	commandBuffer.endRendering();
 
