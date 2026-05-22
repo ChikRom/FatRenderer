@@ -546,32 +546,69 @@ void TriangleApp::createCommandBuffers()
 
 void TriangleApp::createVertexBuffer()
 {
-	// create a vertex buffer for some vertex and color data
+	vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+	auto [stagingBuffer, stagingBufferMemory] = createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+		vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+	// copy the vertex and color data into that device memory
+	void* data = stagingBufferMemory.mapMemory(0, bufferSize);
+	memcpy(data, vertices.data(), bufferSize);
+	stagingBufferMemory.unmapMemory();
+	// and bind the device memory to the vertex buffer
+
+	std::tie(vertexBuffer, vertexBufferMemory) = createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+		vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+}
+
+std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> TriangleApp::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
+{
+	// create a buffer for some data
 	vk::BufferCreateInfo bufferInfo
 	{
-		.size = sizeof(vertices[0]) * vertices.size(),
-		.usage = vk::BufferUsageFlagBits::eVertexBuffer,
+		.size = size,
+		.usage = usage,
 		.sharingMode = vk::SharingMode::eExclusive
 	};
-	vertexBuffer = vk::raii::Buffer(device, bufferInfo);
+	vk::raii::Buffer buffer(device, bufferInfo);
 
 	// allocate device memory for that buffer
-	vk::MemoryRequirements memoryRequirements = vertexBuffer.getMemoryRequirements();
-	uint32_t memoryType = findMemoryType(memoryRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible |
-																			vk::MemoryPropertyFlagBits::eHostCoherent);
+	vk::MemoryRequirements memoryRequirements = buffer.getMemoryRequirements();
+	uint32_t memoryType = findMemoryType(memoryRequirements.memoryTypeBits, properties);
 	vk::MemoryAllocateInfo memoryAllocateInfo
 	{
 		.allocationSize = memoryRequirements.size,
 		.memoryTypeIndex = memoryType
 	};
-	vertexBufferMemory = vk::raii::DeviceMemory(device, memoryAllocateInfo);
+	vk::raii::DeviceMemory bufferMemory(device, memoryAllocateInfo);
+	buffer.bindMemory(*bufferMemory, 0);
+	return { std::move(buffer), std::move(bufferMemory) };
+}
 
-	// copy the vertex and color data into that device memory
-	void* data = vertexBufferMemory.mapMemory(0, bufferInfo.size);
-	memcpy(data, vertices.data(), bufferInfo.size);
-	vertexBufferMemory.unmapMemory();
-	// and bind the device memory to the vertex buffer
-	vertexBuffer.bindMemory(*vertexBufferMemory, 0);
+void TriangleApp::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size)
+{
+	vk::CommandBufferAllocateInfo allocInfo
+	{
+		.commandPool = commandPool,
+		.level = vk::CommandBufferLevel::ePrimary,
+		.commandBufferCount = 1,
+	};
+	vk::raii::CommandBuffer commandCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
+
+	commandCopyBuffer.begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+	commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
+
+	commandCopyBuffer.end();
+
+	vk::SubmitInfo submInfo
+	{
+		.commandBufferCount = 1,
+		.pCommandBuffers = &*commandCopyBuffer
+	};
+	graphicsQueue.submit(submInfo, nullptr);
+	graphicsQueue.waitIdle();
 }
 
 uint32_t TriangleApp::findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties)
