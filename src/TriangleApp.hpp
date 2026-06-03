@@ -42,11 +42,16 @@ struct Vertex
 
 const std::vector<Vertex> vertices = 
 {
-	{{0.0f, -0.5f }, {1.0f, 0.0f, 0.0f }},
-	{{0.5f, 0.5f }, {0.0f, 1.0f, 0.0f }},
-	{{-0.5f, 0.5f }, {0.0f, 0.0f, 1.0f }}
+	{{-0.5f,-0.5f }, {1.0f, 0.0f, 0.0f }},
+	{{-0.5f, 0.5f }, {1.0f, 1.0f, 1.0f }},
+	{{ 0.5f, 0.5f }, {0.0f, 0.0f, 1.0f }},
+	{{ 0.5f,-0.5f }, {0.0f, 1.0f, 0.0f }}
 };
 
+const std::vector<uint16_t> indices =
+{
+	0,1,2,2,3,0
+};
 
 
 
@@ -96,6 +101,8 @@ private:
 	vk::raii::CommandPool				commandPool = nullptr;
 	vk::raii::Buffer					vertexBuffer = nullptr;
 	vk::raii::DeviceMemory				vertexBufferMemory = nullptr;
+	vk::raii::Buffer					indexBuffer = nullptr;
+	vk::raii::DeviceMemory				indexBufferMemory = nullptr;
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
@@ -121,6 +128,7 @@ private:
 	void createCommandPool();
 	void createCommandBuffers();
 	void createVertexBuffer();
+	void createIndexBuffer();
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);

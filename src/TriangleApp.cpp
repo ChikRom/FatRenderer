@@ -91,6 +91,7 @@ void TriangleApp::initVulkan()
 	createGraphicsPipeline();
 	createCommandPool();
 	createVertexBuffer();
+	createIndexBuffer();
 	createCommandBuffers();
 	createSyncObjects();
 }
@@ -455,7 +456,7 @@ void TriangleApp::createGraphicsPipeline()
 		.rasterizerDiscardEnable = vk::False,
 		.polygonMode = vk::PolygonMode::eFill,
 		.cullMode = vk::CullModeFlagBits::eBack,
-		.frontFace = vk::FrontFace::eClockwise,
+		.frontFace = vk::FrontFace::eCounterClockwise,
 		.depthBiasEnable = vk::False,
 		.lineWidth = 1.0f
 	};
@@ -560,6 +561,22 @@ void TriangleApp::createVertexBuffer()
 		vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+}
+
+void TriangleApp::createIndexBuffer()
+{
+	vk::DeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+	auto [stagingBuffer, stagingBufferMemory] = createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+		vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+	
+	void* data = stagingBufferMemory.mapMemory(0, bufferSize);
+	memcpy(data, indices.data(), (size_t)bufferSize);
+	stagingBufferMemory.unmapMemory();
+
+	std::tie(indexBuffer, indexBufferMemory) = createBuffer(bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+		vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	copyBuffer(stagingBuffer, indexBuffer, bufferSize);
 }
 
 std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> TriangleApp::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
@@ -749,12 +766,13 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
 
 	commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
+	commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
 	
 	commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 	
-	commandBuffer.draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-
+	//commandBuffer.draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+	commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
 	transition_image_layout(
