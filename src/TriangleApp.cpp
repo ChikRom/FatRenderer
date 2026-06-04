@@ -88,6 +88,7 @@ void TriangleApp::initVulkan()
 	createLogicalDevice();
 	createSwapChain();
 	createImageViews();
+	createDescriptorSetLayout();
 	createGraphicsPipeline();
 	createCommandPool();
 	createVertexBuffer();
@@ -407,6 +408,24 @@ void TriangleApp::createImageViews()
 	}
 }
 
+void TriangleApp::createDescriptorSetLayout()
+{
+	vk::DescriptorSetLayoutBinding uboBindingLayout
+	{
+		.binding = 0,
+		.descriptorType = vk::DescriptorType::eUniformBuffer,
+		.descriptorCount = 1,
+		.stageFlags = vk::ShaderStageFlagBits::eVertex
+	};
+
+	vk::DescriptorSetLayoutCreateInfo layoutInfo
+	{
+		.bindingCount = 1,
+		.pBindings = &uboBindingLayout
+	};
+	descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
+}
+
 void TriangleApp::createGraphicsPipeline()
 {
 	auto shaderCode = readFile("shaders/slang.spv");
@@ -491,7 +510,8 @@ void TriangleApp::createGraphicsPipeline()
 
 	vk::PipelineLayoutCreateInfo layoutInfo
 	{
-		.setLayoutCount = 0,
+		.setLayoutCount = 1,
+		.pSetLayouts = &*descriptorSetLayout,
 		.pushConstantRangeCount = 0
 	};
 
@@ -577,6 +597,36 @@ void TriangleApp::createIndexBuffer()
 		vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+}
+
+void TriangleApp::createUniformBuffers()
+{
+	vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+	for (size_t i = 0; i < IN_FLIGHT_FRAMES; i++)
+	{
+		auto [uniformBuffer, uniformBufferMemory] = createBuffer(bufferSize,
+			vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible);
+		uniformBuffers.emplace_back(std::move(uniformBuffer));
+		uniformBuffersMemory.emplace_back(std::move(uniformBufferMemory));
+		uniformBuffersMapped.emplace_back(uniformBuffersMemory.back().mapMemory(0, bufferSize));
+	}
+}
+
+void TriangleApp::updateUniformBuffer(uint32_t frameIndex)
+{
+	static auto startTime = std::chrono::high_resolution_clock::now();
+
+	auto currentTime = std::chrono::high_resolution_clock::now();
+
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+	UniformBufferObject ubo{};
+
+	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.projection = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
+	ubo.projection[1][1] *= -1;
+	memcpy(uniformBuffersMapped[frameIndex], &ubo, sizeof(ubo));
 }
 
 std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> TriangleApp::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties)
@@ -854,6 +904,8 @@ void TriangleApp::drawFrame()
 	device.resetFences(*drawFences[frameIndex]);
 	commandBuffers[frameIndex].reset();
 	recordCommandBuffer(imageIndex);
+
+	updateUniformBuffer(frameIndex);
 
 	vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
 	const vk::SubmitInfo submitInfo

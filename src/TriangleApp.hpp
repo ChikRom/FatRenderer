@@ -3,6 +3,8 @@
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
 #include <array>
 #include <vector>
 #include <fstream>
@@ -53,6 +55,13 @@ const std::vector<uint16_t> indices =
 	0,1,2,2,3,0
 };
 
+struct UniformBufferObject
+{
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 projection;
+};
+
 
 
 static std::vector<char> readFile(const std::string& filename)
@@ -96,6 +105,7 @@ private:
 	vk::SurfaceFormatKHR				swapChainSurfaceFormat;
 	vk::Extent2D						swapChainExtent;
 	std::vector<vk::raii::ImageView>	swapChainImageViews;
+	vk::raii::DescriptorSetLayout		descriptorSetLayout = nullptr;
 	vk::raii::PipelineLayout			pipelineLayout = nullptr;
 	vk::raii::Pipeline					graphicsPipeline = nullptr;
 	vk::raii::CommandPool				commandPool = nullptr;
@@ -103,6 +113,11 @@ private:
 	vk::raii::DeviceMemory				vertexBufferMemory = nullptr;
 	vk::raii::Buffer					indexBuffer = nullptr;
 	vk::raii::DeviceMemory				indexBufferMemory = nullptr;
+
+	std::vector<vk::raii::Buffer>		uniformBuffers;
+	std::vector<vk::raii::DeviceMemory>	uniformBuffersMemory;
+	std::vector<void*>					uniformBuffersMapped;
+
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
@@ -124,11 +139,14 @@ private:
 	void createSurface();
 	void createSwapChain();
 	void createImageViews();
+	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
 	void createCommandPool();
 	void createCommandBuffers();
 	void createVertexBuffer();
 	void createIndexBuffer();
+	void createUniformBuffers();
+	void updateUniformBuffer(uint32_t frameIndex);
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
