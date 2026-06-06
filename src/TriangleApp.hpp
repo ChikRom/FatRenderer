@@ -114,6 +114,9 @@ private:
 	vk::raii::Buffer					indexBuffer = nullptr;
 	vk::raii::DeviceMemory				indexBufferMemory = nullptr;
 
+	vk::raii::DescriptorPool			descriptorPool = nullptr;
+	std::vector<vk::raii::DescriptorSet>descriptorSets;
+
 	std::vector<vk::raii::Buffer>		uniformBuffers;
 	std::vector<vk::raii::DeviceMemory>	uniformBuffersMemory;
 	std::vector<void*>					uniformBuffersMapped;
@@ -147,6 +150,8 @@ private:
 	void createIndexBuffer();
 	void createUniformBuffers();
 	void updateUniformBuffer(uint32_t frameIndex);
+	void createDescriptorPool();
+	void createDescriptorSets();
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);

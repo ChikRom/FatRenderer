@@ -88,7 +88,10 @@ void TriangleApp::initVulkan()
 	createLogicalDevice();
 	createSwapChain();
 	createImageViews();
+	createUniformBuffers();
 	createDescriptorSetLayout();
+	createDescriptorPool();
+	createDescriptorSets();
 	createGraphicsPipeline();
 	createCommandPool();
 	createVertexBuffer();
@@ -426,6 +429,60 @@ void TriangleApp::createDescriptorSetLayout()
 	descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
 }
 
+void TriangleApp::createDescriptorPool()
+{
+	vk::DescriptorPoolSize descriptorPoolSize
+	{
+		.type = vk::DescriptorType::eUniformBuffer,
+		.descriptorCount = IN_FLIGHT_FRAMES
+	};
+
+	vk::DescriptorPoolCreateInfo decriptorCreateInfo
+	{
+		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+		.maxSets = IN_FLIGHT_FRAMES,
+		.poolSizeCount = 1,
+		.pPoolSizes = &descriptorPoolSize
+	};
+
+	descriptorPool = vk::raii::DescriptorPool(device, decriptorCreateInfo);
+}
+
+void TriangleApp::createDescriptorSets()
+{
+
+	std::vector<vk::DescriptorSetLayout> layouts(IN_FLIGHT_FRAMES, *descriptorSetLayout);
+
+	vk::DescriptorSetAllocateInfo allocInfo
+	{
+		.descriptorPool = descriptorPool,
+		.descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+		.pSetLayouts = layouts.data()
+	};
+
+	descriptorSets = device.allocateDescriptorSets(allocInfo);
+
+	for (uint32_t i = 0; i < IN_FLIGHT_FRAMES; i++)
+	{
+		vk::DescriptorBufferInfo descriptorBufferInfo
+		{
+			.buffer = uniformBuffers[i],
+			.offset = 0,
+			.range = sizeof(UniformBufferObject)
+		};
+		vk::WriteDescriptorSet writeDescriptorSet
+		{
+			.dstSet = descriptorSets[i],
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = 1,
+			.descriptorType = vk::DescriptorType::eUniformBuffer,
+			.pBufferInfo = &descriptorBufferInfo
+		};
+		device.updateDescriptorSets(writeDescriptorSet, {});
+	}
+}
+
 void TriangleApp::createGraphicsPipeline()
 {
 	auto shaderCode = readFile("shaders/slang.spv");
@@ -475,7 +532,7 @@ void TriangleApp::createGraphicsPipeline()
 		.rasterizerDiscardEnable = vk::False,
 		.polygonMode = vk::PolygonMode::eFill,
 		.cullMode = vk::CullModeFlagBits::eBack,
-		.frontFace = vk::FrontFace::eCounterClockwise,
+		.frontFace = vk::FrontFace::eClockwise,
 		.depthBiasEnable = vk::False,
 		.lineWidth = 1.0f
 	};
@@ -822,6 +879,7 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
 	
 	//commandBuffer.draw(static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+	commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout, 0, *descriptorSets[frameIndex], nullptr);
 	commandBuffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
