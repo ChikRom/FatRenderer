@@ -1,0 +1,1 @@
+#define TEXTURE_PATH "C:/dev/FatRenderer/textures/"

@@ -1,5 +1,6 @@
 #define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
 #define GLFW_INCLUDE_VULKAN
+#include "macros.h"
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
 #include <glm/glm.hpp>
@@ -8,6 +9,7 @@
 #include <array>
 #include <vector>
 #include <fstream>
+#include <stb_image.h>
 
 constexpr uint32_t SCREEN_WIDTH = 800.0f;
 constexpr uint32_t SCREEN_HEIGHT = 600.0f;
@@ -121,6 +123,11 @@ private:
 	std::vector<vk::raii::DeviceMemory>	uniformBuffersMemory;
 	std::vector<void*>					uniformBuffersMapped;
 
+	vk::raii::Image						textureImage = nullptr;
+	vk::raii::DeviceMemory				textureImageMemory = nullptr;
+	vk::raii::ImageView					textureImageView = nullptr;
+	vk::raii::Sampler					textureSampler = nullptr;
+
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
@@ -144,6 +151,7 @@ private:
 	void createImageViews();
 	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
+	void createTextureImage();
 	void createCommandPool();
 	void createCommandBuffers();
 	void createVertexBuffer();
@@ -152,6 +160,10 @@ private:
 	void updateUniformBuffer(uint32_t frameIndex);
 	void createDescriptorPool();
 	void createDescriptorSets();
+	vk::raii::CommandBuffer beginSingleTimeCommands();
+	void endSingleTimeCommands(vk::raii::CommandBuffer&& commandBuffer);
+	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format,
+		vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
@@ -164,6 +176,8 @@ private:
 		vk::PipelineStageFlags2 src_stage_mask,
 		vk::PipelineStageFlags2 dst_stage_mask
 	);
+	void copyBufferToImage(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height);
+	void transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout);
 	void recordCommandBuffer(uint32_t imageIndex);
 	void createSyncObjects();
 	void recreateSwapChain();
@@ -175,4 +189,7 @@ private:
 	vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
 	uint32_t chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities);
 	std::vector<const char*> getRequiredInstanceExtensions();
+	vk::raii::ImageView createImageView(const vk::Image& image, const vk::Format& format);
+	void createTextureImageView();
+	void createTextureSampler();
 };
