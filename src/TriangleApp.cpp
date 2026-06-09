@@ -48,7 +48,7 @@ bool TriangleApp::isDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevic
 				supportsCurrentExtension = true;
 				break;
 			}
-		}
+		} 
 
 		if (supportsCurrentExtension == false)
 		{
@@ -474,36 +474,47 @@ void TriangleApp::createImageViews()
 
 void TriangleApp::createDescriptorSetLayout()
 {
-	vk::DescriptorSetLayoutBinding uboBindingLayout
-	{
-		.binding = 0,
-		.descriptorType = vk::DescriptorType::eUniformBuffer,
-		.descriptorCount = 1,
-		.stageFlags = vk::ShaderStageFlagBits::eVertex
-	};
+	std::array<vk::DescriptorSetLayoutBinding, 2> bindgings
+	{ {
+		{	// descriptor set for uniform buffer
+			.binding = 0,
+			.descriptorType = vk::DescriptorType::eUniformBuffer,
+			.descriptorCount = 1,
+			.stageFlags = vk::ShaderStageFlagBits::eVertex
+		},
+		{	// descriptor set for texture image
+			.binding = 1,
+			.descriptorType = vk::DescriptorType::eCombinedImageSampler,
+			.descriptorCount = 1,
+			.stageFlags = vk::ShaderStageFlagBits::eFragment
+		}
+	}};
+
 
 	vk::DescriptorSetLayoutCreateInfo layoutInfo
 	{
-		.bindingCount = 1,
-		.pBindings = &uboBindingLayout
+		.bindingCount = static_cast<uint32_t>(bindgings.size()),
+		.pBindings = bindgings.data(),
 	};
 	descriptorSetLayout = vk::raii::DescriptorSetLayout(device, layoutInfo);
 }
 
 void TriangleApp::createDescriptorPool()
 {
-	vk::DescriptorPoolSize descriptorPoolSize
-	{
-		.type = vk::DescriptorType::eUniformBuffer,
-		.descriptorCount = IN_FLIGHT_FRAMES
-	};
+	std::array<vk::DescriptorPoolSize, 2> descriptorPoolSize
+	{ { // Descriptor pool size for unifrom buffer and texture image
+		{.type = vk::DescriptorType::eUniformBuffer, .descriptorCount = IN_FLIGHT_FRAMES},
+		{.type = vk::DescriptorType::eCombinedImageSampler, .descriptorCount = IN_FLIGHT_FRAMES}
+	} };
+
+
 
 	vk::DescriptorPoolCreateInfo decriptorCreateInfo
 	{
 		.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
 		.maxSets = IN_FLIGHT_FRAMES,
-		.poolSizeCount = 1,
-		.pPoolSizes = &descriptorPoolSize
+		.poolSizeCount = static_cast<uint32_t>(descriptorPoolSize.size()),
+		.pPoolSizes = descriptorPoolSize.data()
 	};
 
 	descriptorPool = vk::raii::DescriptorPool(device, decriptorCreateInfo);
@@ -531,16 +542,31 @@ void TriangleApp::createDescriptorSets()
 			.offset = 0,
 			.range = sizeof(UniformBufferObject)
 		};
-		vk::WriteDescriptorSet writeDescriptorSet
+		vk::DescriptorImageInfo descriptorImageInfo
 		{
-			.dstSet = descriptorSets[i],
-			.dstBinding = 0,
-			.dstArrayElement = 0,
-			.descriptorCount = 1,
-			.descriptorType = vk::DescriptorType::eUniformBuffer,
-			.pBufferInfo = &descriptorBufferInfo
+			.sampler = textureSampler,
+			.imageView = textureImageView,
+			.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal
 		};
-		device.updateDescriptorSets(writeDescriptorSet, {});
+		std::array<vk::WriteDescriptorSet, 2> descriptorSetWrites
+		{ {
+			{.dstSet = descriptorSets[i],
+				.dstBinding = 0,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = vk::DescriptorType::eUniformBuffer,
+				.pBufferInfo = &descriptorBufferInfo
+			},
+			{
+				.dstSet = descriptorSets[i],
+				.dstBinding = 1,
+				.dstArrayElement = 0,
+				.descriptorCount = 1,
+				.descriptorType = vk::DescriptorType::eCombinedImageSampler,
+				.pImageInfo = &descriptorImageInfo
+			}
+		} };
+		device.updateDescriptorSets(descriptorSetWrites, {});
 	}
 }
 
@@ -693,6 +719,7 @@ void TriangleApp::createTextureImage()
 	vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
 	transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 	copyBufferToImage(commandBuffer, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+	transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 	endSingleTimeCommands(std::move(commandBuffer));
 }
 
@@ -775,8 +802,8 @@ void TriangleApp::updateUniformBuffer(uint32_t frameIndex)
 
 	UniformBufferObject ubo{};
 
-	ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.model = glm::rotate(glm::mat4(1.0f),time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.view = glm::lookAt(glm::vec3(0.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	ubo.projection = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
 	ubo.projection[1][1] *= -1;
 	memcpy(uniformBuffersMapped[frameIndex], &ubo, sizeof(ubo));
