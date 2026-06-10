@@ -1,5 +1,6 @@
 #define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
 #define GLFW_INCLUDE_VULKAN
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "macros.h"
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
@@ -28,7 +29,7 @@ constexpr bool enableValidationLayers = true;
 
 struct Vertex
 {
-	glm::vec2 positions;
+	glm::vec3 positions;
 	glm::vec2 texCoord;
 	glm::vec3 color;
 
@@ -39,7 +40,7 @@ struct Vertex
 	static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
 	{
 		return {{
-				   {.location = 0, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, positions)},
+				   {.location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, positions)},
 				   {.location = 1, .binding = 0, .format = vk::Format::eR32G32Sfloat, .offset = offsetof(Vertex, texCoord)},
 				   {.location = 2, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}
 			   }};
@@ -48,15 +49,21 @@ struct Vertex
 
 const std::vector<Vertex> vertices = 
 {
-	{{-0.5f,-0.5f }, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
-	{{-0.5f, 0.5f }, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
-	{{ 0.5f, 0.5f }, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
-	{{ 0.5f,-0.5f }, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }}
+	{{-0.5f,-0.5f,0.0f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
+	{{-0.5f, 0.5f,0.0f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
+	{{ 0.5f, 0.5f,0.0f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
+	{{ 0.5f,-0.5f,0.0f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }},
+
+	{{-0.5f,-0.5f,0.5f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
+	{{-0.5f, 0.5f,0.5f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
+	{{ 0.5f, 0.5f,0.5f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
+	{{ 0.5f,-0.5f,0.5f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }}
 };
 
 const std::vector<uint16_t> indices =
 {
-	0,1,2,2,3,0
+	0,1,2,2,3,0,
+	4,5,6,6,7,4
 };
 
 struct UniformBufferObject
@@ -130,6 +137,11 @@ private:
 	vk::raii::ImageView					textureImageView = nullptr;
 	vk::raii::Sampler					textureSampler = nullptr;
 
+	vk::raii::Image						depthImage = nullptr;
+	vk::raii::DeviceMemory				depthImageMemory = nullptr;
+	vk::raii::ImageView					depthImageView = nullptr;
+	vk::Format							depthFormat;
+
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
 	std::vector<vk::raii::Semaphore>	presentCompleteSemaphores;
@@ -155,6 +167,7 @@ private:
 	void createGraphicsPipeline();
 	void createTextureImage();
 	void createCommandPool();
+	void createDepthResources();
 	void createCommandBuffers();
 	void createVertexBuffer();
 	void createIndexBuffer();
@@ -163,6 +176,7 @@ private:
 	void createDescriptorPool();
 	void createDescriptorSets();
 	vk::raii::CommandBuffer beginSingleTimeCommands();
+	vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
 	void endSingleTimeCommands(vk::raii::CommandBuffer&& commandBuffer);
 	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format,
 		vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
@@ -170,13 +184,14 @@ private:
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
 	uint32_t findMemoryType(uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 	void transition_image_layout(
-		uint32_t	imageIndex,
+		vk::Image		image,
 		vk::ImageLayout old_layout,
 		vk::ImageLayout new_layout,
 		vk::AccessFlags2	src_access_mask,
 		vk::AccessFlags2	dst_access_mask,
 		vk::PipelineStageFlags2 src_stage_mask,
-		vk::PipelineStageFlags2 dst_stage_mask
+		vk::PipelineStageFlags2 dst_stage_mask,
+		vk::ImageAspectFlagBits image_aspect_flags
 	);
 	void copyBufferToImage(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height);
 	void transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout);
@@ -191,7 +206,7 @@ private:
 	vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
 	uint32_t chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities);
 	std::vector<const char*> getRequiredInstanceExtensions();
-	vk::raii::ImageView createImageView(const vk::Image& image, const vk::Format& format);
+	vk::raii::ImageView createImageView(const vk::Image& image, const vk::Format& format, vk::ImageAspectFlags aspectFlags);
 	void createTextureImageView();
 	void createTextureSampler();
 };
