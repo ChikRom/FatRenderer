@@ -1,5 +1,6 @@
-
 #define STB_IMAGE_IMPLEMENTATION
+#define TINYOBJLOADER_DISABLE_FAST_FLOAT
+#define TINYOBJLOADER_IMPLEMENTATION
 #include "TriangleApp.hpp"
 #include <iostream>
 
@@ -99,6 +100,7 @@ void TriangleApp::initVulkan()
 	createTextureImage();
 	createTextureImageView();
 	createTextureSampler();
+	loadModel();
 	createVertexBuffer();
 	createIndexBuffer();
 	createUniformBuffers();
@@ -571,6 +573,48 @@ void TriangleApp::createDescriptorSets()
 	}
 }
 
+void TriangleApp::loadModel()
+{
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warn, error;
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &error, MODEL_PATH "viking_room.obj"))
+	{
+		throw std::runtime_error(warn + error);
+	}
+
+	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+	for (const auto& shape : shapes)
+	{
+		for (const auto& index : shape.mesh.indices)
+		{
+			Vertex vertex{};
+
+			vertex.positions =
+			{
+				attrib.vertices[3 * index.vertex_index + 0],
+				attrib.vertices[3 * index.vertex_index + 1],
+				attrib.vertices[3 * index.vertex_index + 2]
+			};
+
+			vertex.texCoord =
+			{
+				attrib.texcoords[2 * index.texcoord_index + 0],
+				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+			};
+			vertex.color = { 1.0f,1.0f,1.0f };
+
+			auto [it, inserted] = uniqueVertices.insert({ vertex, static_cast<uint32_t>(vertices.size()) });
+			if (inserted)
+			{
+			vertices.push_back(vertex);	
+			}
+			indices.push_back(it->second);
+		}
+	}
+}
+
 void TriangleApp::createGraphicsPipeline()
 {
 	auto shaderCode = readFile("shaders/slang.spv");
@@ -620,7 +664,7 @@ void TriangleApp::createGraphicsPipeline()
 		.rasterizerDiscardEnable = vk::False,
 		.polygonMode = vk::PolygonMode::eFill,
 		.cullMode = vk::CullModeFlagBits::eBack,
-		.frontFace = vk::FrontFace::eClockwise,
+		.frontFace = vk::FrontFace::eCounterClockwise,
 		.depthBiasEnable = vk::False,
 		.lineWidth = 1.0f
 	};
@@ -703,7 +747,7 @@ void TriangleApp::createTextureImage()
 {
 	int texWidth, texHeight, texChannels;
 	
-	auto* pixels = stbi_load(TEXTURE_PATH"statue.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	auto* pixels = stbi_load(TEXTURE_PATH"viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
 	if (!pixels)
@@ -847,8 +891,8 @@ void TriangleApp::updateUniformBuffer(uint32_t frameIndex)
 
 	UniformBufferObject ubo{};
 
-	ubo.model = glm::rotate(glm::mat4(1.0f),glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	ubo.view = glm::lookAt(glm::vec3(0.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	ubo.model = glm::rotate(glm::mat4(1.0f),time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 	ubo.projection = glm::perspective(glm::radians(45.0f), static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height), 0.1f, 10.0f);
 	ubo.projection[1][1] *= -1;
 	memcpy(uniformBuffersMapped[frameIndex], &ubo, sizeof(ubo));
@@ -1186,7 +1230,7 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *graphicsPipeline);
 
 	commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
-	commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
+	commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexTypeValue<decltype(indices)::value_type>::value);
 	
 	commandBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
 	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));

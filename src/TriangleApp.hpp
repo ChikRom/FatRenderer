@@ -1,20 +1,27 @@
+#pragma once
 #define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
 #define GLFW_INCLUDE_VULKAN
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include "macros.h"
 #include "GLFW/glfw3.h"
 #include <vulkan/vulkan_raii.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp>
 #include <chrono>
 #include <array>
 #include <vector>
 #include <fstream>
 #include <stb_image.h>
+#include "tiny_obj_loader.h"
+#include <unordered_map>
 
 constexpr uint32_t SCREEN_WIDTH = 800.0f;
 constexpr uint32_t SCREEN_HEIGHT = 600.0f;
 constexpr uint32_t IN_FLIGHT_FRAMES = 2;
+
+
 
 const std::vector<char const*> validationLayers =
 {
@@ -45,26 +52,39 @@ struct Vertex
 				   {.location = 2, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, color)}
 			   }};
 	};
+	bool operator==(const Vertex& other) const
+	{
+		return other.color == color && positions == other.positions && texCoord == other.texCoord;
+	}
 };
 
-const std::vector<Vertex> vertices = 
+template <>
+struct std::hash<Vertex>
 {
-	{{-0.5f,-0.5f,0.0f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
-	{{-0.5f, 0.5f,0.0f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
-	{{ 0.5f, 0.5f,0.0f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
-	{{ 0.5f,-0.5f,0.0f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }},
-
-	{{-0.5f,-0.5f,0.5f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
-	{{-0.5f, 0.5f,0.5f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
-	{{ 0.5f, 0.5f,0.5f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
-	{{ 0.5f,-0.5f,0.5f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }}
+	size_t operator()(Vertex const& vertex) const noexcept
+	{
+		return ((hash<glm::vec3>()(vertex.positions) ^ (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+	}
 };
 
-const std::vector<uint16_t> indices =
-{
-	0,1,2,2,3,0,
-	4,5,6,6,7,4
-};
+//const std::vector<Vertex> vertices = 
+//{
+//	{{-0.5f,-0.5f,0.0f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
+//	{{-0.5f, 0.5f,0.0f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
+//	{{ 0.5f, 0.5f,0.0f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
+//	{{ 0.5f,-0.5f,0.0f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }},
+//
+//	{{-0.5f,-0.5f,0.5f}, {0.0f,1.0f}, {1.0f, 0.0f, 0.0f }},
+//	{{-0.5f, 0.5f,0.5f}, {0.0f,0.0f}, {1.0f, 1.0f, 1.0f }},
+//	{{ 0.5f, 0.5f,0.5f}, {1.0f,0.0f}, {0.0f, 0.0f, 1.0f }},
+//	{{ 0.5f,-0.5f,0.5f}, {1.0f,1.0f}, {0.0f, 1.0f, 0.0f }}
+//};
+//
+//const std::vector<uint32_t> indices =
+//{
+//	0,1,2,2,3,0,
+//	4,5,6,6,7,4
+//};
 
 struct UniformBufferObject
 {
@@ -120,6 +140,9 @@ private:
 	vk::raii::PipelineLayout			pipelineLayout = nullptr;
 	vk::raii::Pipeline					graphicsPipeline = nullptr;
 	vk::raii::CommandPool				commandPool = nullptr;
+
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 	vk::raii::Buffer					vertexBuffer = nullptr;
 	vk::raii::DeviceMemory				vertexBufferMemory = nullptr;
 	vk::raii::Buffer					indexBuffer = nullptr;
@@ -141,6 +164,8 @@ private:
 	vk::raii::DeviceMemory				depthImageMemory = nullptr;
 	vk::raii::ImageView					depthImageView = nullptr;
 	vk::Format							depthFormat;
+
+
 
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
@@ -175,6 +200,7 @@ private:
 	void updateUniformBuffer(uint32_t frameIndex);
 	void createDescriptorPool();
 	void createDescriptorSets();
+	void loadModel();
 	vk::raii::CommandBuffer beginSingleTimeCommands();
 	vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
 	void endSingleTimeCommands(vk::raii::CommandBuffer&& commandBuffer);
