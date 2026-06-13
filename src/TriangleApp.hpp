@@ -155,6 +155,7 @@ private:
 	std::vector<vk::raii::DeviceMemory>	uniformBuffersMemory;
 	std::vector<void*>					uniformBuffersMapped;
 
+	uint32_t mipLevels;
 	vk::raii::Image						textureImage = nullptr;
 	vk::raii::DeviceMemory				textureImageMemory = nullptr;
 	vk::raii::ImageView					textureImageView = nullptr;
@@ -201,10 +202,10 @@ private:
 	void createDescriptorPool();
 	void createDescriptorSets();
 	void loadModel();
-	vk::raii::CommandBuffer beginSingleTimeCommands();
+	std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
 	vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
-	void endSingleTimeCommands(vk::raii::CommandBuffer&& commandBuffer);
-	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, vk::Format format,
+	void endSingleTimeCommands(const vk::raii::CommandBuffer& commandBuffer);
+	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format,
 		vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
@@ -219,8 +220,8 @@ private:
 		vk::PipelineStageFlags2 dst_stage_mask,
 		vk::ImageAspectFlagBits image_aspect_flags
 	);
-	void copyBufferToImage(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height);
-	void transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout);
+	void copyBufferToImage(const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height);
+	void transitionImageLayout(const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout, uint32_t mipLevels);
 	void recordCommandBuffer(uint32_t imageIndex);
 	void createSyncObjects();
 	void recreateSwapChain();
@@ -232,7 +233,8 @@ private:
 	vk::raii::ShaderModule createShaderModule(const std::vector<char>& code) const;
 	uint32_t chooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities);
 	std::vector<const char*> getRequiredInstanceExtensions();
-	vk::raii::ImageView createImageView(const vk::Image& image, const vk::Format& format, vk::ImageAspectFlags aspectFlags);
+	vk::raii::ImageView createImageView(const vk::Image& image, const vk::Format& format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels);
 	void createTextureImageView();
 	void createTextureSampler();
+	void generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int texWidth, int texHeight, uint32_t mipLevels);
 };

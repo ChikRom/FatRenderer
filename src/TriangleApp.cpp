@@ -92,12 +92,12 @@ void TriangleApp::initVulkan()
 	pickPhysicalDevice();
 	createLogicalDevice();
 	createSwapChain();
-	createImageViews();
 	createDescriptorSetLayout();
 	createDepthResources();
 	createGraphicsPipeline();
 	createCommandPool();
 	createTextureImage();
+	createImageViews();
 	createTextureImageView();
 	createTextureSampler();
 	loadModel();
@@ -389,7 +389,7 @@ std::vector<const char* > TriangleApp::getRequiredInstanceExtensions()
 	return extensions;
 }
 
-vk::raii::ImageView TriangleApp::createImageView(const vk::Image& image, const vk::Format& format, vk::ImageAspectFlags aspectFlags)
+vk::raii::ImageView TriangleApp::createImageView(const vk::Image& image, const vk::Format& format, vk::ImageAspectFlags aspectFlags, uint32_t mipLevels)
 {
 
 	vk::ImageViewCreateInfo imageViewCreateInfo
@@ -411,7 +411,7 @@ vk::raii::ImageView TriangleApp::createImageView(const vk::Image& image, const v
 	{
 		.aspectMask = aspectFlags,
 		.baseMipLevel = 0,
-		.levelCount = 1,
+		.levelCount = mipLevels,
 		.baseArrayLayer = 0,
 		.layerCount = 1,
 	};
@@ -420,7 +420,7 @@ vk::raii::ImageView TriangleApp::createImageView(const vk::Image& image, const v
 
 void TriangleApp::createTextureImageView()
 {
-	textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+	textureImageView = createImageView(*textureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mipLevels);
 }
 
 void TriangleApp::createTextureSampler()
@@ -434,10 +434,13 @@ void TriangleApp::createTextureSampler()
 		.addressModeU = vk::SamplerAddressMode::eRepeat,
 		.addressModeV = vk::SamplerAddressMode::eRepeat,
 		.addressModeW = vk::SamplerAddressMode::eRepeat,
+		.mipLodBias = 0.0f,
 		.anisotropyEnable = vk::True,
 		.maxAnisotropy = properties.limits.maxSamplerAnisotropy,
 		.compareEnable = vk::False,
 		.compareOp = vk::CompareOp::eAlways,
+		.minLod = 0.0f,
+		.maxLod = vk::LodClampNone,
 		.borderColor = vk::BorderColor::eIntOpaqueBlack,
 		.unnormalizedCoordinates = vk::False,
 	};
@@ -471,7 +474,7 @@ void TriangleApp::createImageViews()
 
 	for (auto& image : swapChainImages)
 	{
-		swapChainImageViews.emplace_back(createImageView(image, swapChainSurfaceFormat.format,vk::ImageAspectFlagBits::eColor));
+		swapChainImageViews.emplace_back(createImageView(image, swapChainSurfaceFormat.format,vk::ImageAspectFlagBits::eColor, 1));
 	}
 }
 
@@ -755,6 +758,8 @@ void TriangleApp::createTextureImage()
 		throw std::runtime_error("failed to load texture");
 	}
 
+	mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+
 	auto [stagingBuffer, stagingBufferMemory] = createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible |
 		vk::MemoryPropertyFlagBits::eHostCoherent);
 
@@ -767,16 +772,18 @@ void TriangleApp::createTextureImage()
 	std::tie(textureImage, textureImageMemory) = createImage(
 		texWidth,
 		texHeight,
+		mipLevels,
 		vk::Format::eR8G8B8A8Srgb,
 		vk::ImageTiling::eOptimal,
-		vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+		vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled,
 		vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-	vk::raii::CommandBuffer commandBuffer = beginSingleTimeCommands();
-	transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-	copyBufferToImage(commandBuffer, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-	transitionImageLayout(commandBuffer, textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
-	endSingleTimeCommands(std::move(commandBuffer));
+	transitionImageLayout(textureImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mipLevels);
+	copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+	// transitioned to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL while generating mipmaps
+	generateMipmaps(textureImage, vk::Format::eR8G8B8A8Srgb, texWidth, texHeight, mipLevels);
+	
+	//transitionImageLayout(textureImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, mipLevels);
 }
 
 void TriangleApp::createCommandPool()
@@ -787,6 +794,77 @@ void TriangleApp::createCommandPool()
 		.queueFamilyIndex = queueIndex,
 	};
 	commandPool = vk::raii::CommandPool(device, commandPoolInfo);
+}
+
+void TriangleApp::generateMipmaps(vk::raii::Image& image, vk::Format imageFormat, int texWidth, int texHeight, uint32_t mipLevels)
+{
+	vk::FormatProperties formatProperties = physicalDevice.getFormatProperties(imageFormat);
+	if (!(formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
+	{
+		throw std::runtime_error("texture image format does not support linear blitting");
+	}
+
+	std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
+
+	vk::ImageMemoryBarrier barrier =
+	{
+		.srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+		.dstAccessMask = vk::AccessFlagBits::eTransferRead,
+		.oldLayout = vk::ImageLayout::eTransferDstOptimal,
+		.newLayout = vk::ImageLayout::eTransferSrcOptimal,
+		.srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+		.dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+		.image = image
+	};
+	barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.subresourceRange.levelCount = 1;
+	int mipWidth = texWidth;
+	int mipHeight = texHeight;
+
+	for (uint32_t i = 1; i < mipLevels; i++)
+	{
+		barrier.subresourceRange.baseMipLevel = i - 1;
+		barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+		barrier.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+		barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+		barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+
+		commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
+
+		vk::ArrayWrapper1D<vk::Offset3D, 2> offsets, dstOffsets;
+		offsets[0] = vk::Offset3D(0, 0, 0);
+		offsets[1] = vk::Offset3D(mipWidth, mipHeight, 1);
+		dstOffsets[0] = vk::Offset3D(0, 0, 0);
+		dstOffsets[1] = vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1);
+		vk::ImageBlit blit = { .srcSubresource = {}, .srcOffsets = offsets, .dstSubresource = {}, .dstOffsets = dstOffsets };
+		blit.srcSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i - 1, 0, 1);
+		blit.dstSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i, 0, 1);
+
+		commandBuffer->blitImage(image, vk::ImageLayout::eTransferSrcOptimal, image, vk::ImageLayout::eTransferDstOptimal, { blit }, vk::Filter::eLinear);
+		barrier.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+		barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+		barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+		commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+
+		if (mipWidth > 1)
+			mipWidth = mipWidth / 2;
+		if (mipHeight > 1)
+			mipHeight = mipHeight / 2;
+	}
+	barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+	barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+	barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+	barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+	barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+	commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
+
+	endSingleTimeCommands(*commandBuffer);
+
 }
 
 void TriangleApp::createCommandBuffers()
@@ -872,14 +950,15 @@ void TriangleApp::createDepthResources()
 
 	std::tie(depthImage, depthImageMemory) = createImage(swapChainExtent.width,
 														 swapChainExtent.height,
+														 1,
 														 depthFormat,
 														 vk::ImageTiling::eOptimal,
 														 vk::ImageUsageFlagBits::eDepthStencilAttachment,
 														 vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-	depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth);
+	depthImageView = createImageView(depthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
 
-	}
+}
 
 void TriangleApp::updateUniformBuffer(uint32_t frameIndex)
 {
@@ -922,7 +1001,7 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> TriangleApp::createBuffer(vk
 	return { std::move(buffer), std::move(bufferMemory) };
 }
 
-std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint32_t width,uint32_t height, vk::Format format,
+std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint32_t width,uint32_t height, uint32_t mipLevels, vk::Format format,
 	vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
 {
 	vk::ImageCreateInfo imageInfo
@@ -930,7 +1009,7 @@ std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint
 		.imageType = vk::ImageType::e2D,
 		.format = format,
 		.extent = {width, height, 1},
-		.mipLevels = 1,
+		.mipLevels = mipLevels,
 		.arrayLayers = 1,
 		.samples = vk::SampleCountFlagBits::e1,
 		.tiling = tiling,
@@ -961,13 +1040,13 @@ void TriangleApp::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstB
 		.commandBufferCount = 1,
 	};*/
 
-	vk::raii::CommandBuffer commandCopyBuffer = beginSingleTimeCommands();
+	auto commandCopyBuffer = beginSingleTimeCommands();
 	
 	//commandCopyBuffer.begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-	commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
+	commandCopyBuffer->copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
 
-	endSingleTimeCommands(std::move(commandCopyBuffer));
+	endSingleTimeCommands(*commandCopyBuffer);
 
 	/*commandCopyBuffer.end();
 
@@ -980,7 +1059,7 @@ void TriangleApp::copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstB
 	graphicsQueue.waitIdle();*/
 }
 
-vk::raii::CommandBuffer TriangleApp::beginSingleTimeCommands()
+std::unique_ptr<vk::raii::CommandBuffer> TriangleApp::beginSingleTimeCommands()
 {
 	vk::CommandBufferAllocateInfo allocInfo
 	{
@@ -988,13 +1067,13 @@ vk::raii::CommandBuffer TriangleApp::beginSingleTimeCommands()
 		.level = vk::CommandBufferLevel::ePrimary,
 		.commandBufferCount = 1,
 	};
-	vk::raii::CommandBuffer commandBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
+	std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = std::make_unique<vk::raii::CommandBuffer>(std::move(device.allocateCommandBuffers(allocInfo).front()));
 
-	commandBuffer.begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+	commandBuffer->begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-	return std::move(commandBuffer);
+	return commandBuffer;
 }
-void TriangleApp::endSingleTimeCommands(vk::raii::CommandBuffer&& commandBuffer)
+void TriangleApp::endSingleTimeCommands(const vk::raii::CommandBuffer& commandBuffer)
 {
 	commandBuffer.end();
 	vk::SubmitInfo submInfo
@@ -1109,8 +1188,9 @@ void TriangleApp::transition_image_layout(
 	commandBuffers[frameIndex].pipelineBarrier2(dependencyInfo);
 }
 
-void TriangleApp::copyBufferToImage(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height)
+void TriangleApp::copyBufferToImage(const vk::raii::Buffer& buffer, vk::raii::Image& image, uint32_t width, uint32_t height)
 {
+	const auto commandBuffer = beginSingleTimeCommands();
 	vk::BufferImageCopy region
 	{
 		.bufferOffset = 0,
@@ -1126,11 +1206,13 @@ void TriangleApp::copyBufferToImage(vk::raii::CommandBuffer& commandBuffer, cons
 		.imageOffset = {0,0,0},
 		.imageExtent = {width, height, 1}
 	};
-	commandBuffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
+	commandBuffer->copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
+	endSingleTimeCommands(*commandBuffer);
 }
 
-void TriangleApp::transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout)
+void TriangleApp::transitionImageLayout(const vk::raii::Image& image, const vk::ImageLayout& oldLayout, const vk::ImageLayout& newLayout, uint32_t mipLevels)
 {
+	const auto commandBuffer = beginSingleTimeCommands();
 	vk::ImageMemoryBarrier barrier =
 	{
 		.oldLayout = oldLayout,
@@ -1141,7 +1223,7 @@ void TriangleApp::transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, 
 		.subresourceRange =
 		{
 			.aspectMask = vk::ImageAspectFlagBits::eColor,
-			.levelCount = 1,
+			.levelCount = mipLevels,
 			.layerCount = 1
 		}
 
@@ -1166,7 +1248,8 @@ void TriangleApp::transitionImageLayout(vk::raii::CommandBuffer& commandBuffer, 
 	}
 	else
 		throw std::invalid_argument("unsupported layout transition!");
-	commandBuffer.pipelineBarrier(srcStageMask, dstStageMask, {}, {}, {}, barrier);
+	commandBuffer->pipelineBarrier(srcStageMask, dstStageMask, {}, {}, {}, barrier);
+	endSingleTimeCommands(*commandBuffer);
 }
 
 void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
