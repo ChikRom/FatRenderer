@@ -93,6 +93,7 @@ void TriangleApp::initVulkan()
 	createLogicalDevice();
 	createSwapChain();
 	createDescriptorSetLayout();
+	createColorResources();
 	createDepthResources();
 	createGraphicsPipeline();
 	createCommandPool();
@@ -288,6 +289,7 @@ void TriangleApp::pickPhysicalDevice()
 		throw std::runtime_error("failed to find a suitable GPU!");
 	}
 	physicalDevice = *deviceIt;
+	sampleCount = getMaxSampleCount();
 	std::cout << "Device was chosen: " << physicalDevice.getProperties().deviceName << std::endl;
 }
 
@@ -323,7 +325,7 @@ void TriangleApp::createLogicalDevice()
 	vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT, vk::PhysicalDeviceVulkan11Features> featureChain =
 	{
-		{.features = {.samplerAnisotropy = true}},
+		{.features = {.sampleRateShading = true,.samplerAnisotropy = true}},
 		{.synchronization2 = true, .dynamicRendering = true,},
 		{.extendedDynamicState = true},
 		{.shaderDrawParameters = true}
@@ -618,6 +620,22 @@ void TriangleApp::loadModel()
 	}
 }
 
+vk::SampleCountFlagBits TriangleApp::getMaxSampleCount()
+{
+	auto properties = physicalDevice.getProperties();
+
+	vk::SampleCountFlags counts = properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
+	if (counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64; }
+	if (counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32; }
+	if (counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16; }
+	if (counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8; }
+	if (counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4; }
+	if (counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2; }
+	
+	return vk::SampleCountFlagBits::e1;
+}
+
+
 void TriangleApp::createGraphicsPipeline()
 {
 	auto shaderCode = readFile("shaders/slang.spv");
@@ -674,8 +692,12 @@ void TriangleApp::createGraphicsPipeline()
 
 	vk::PipelineMultisampleStateCreateInfo multisamplingStateInfo
 	{
-		.rasterizationSamples = vk::SampleCountFlagBits::e1,
-		.sampleShadingEnable = vk::False
+		.rasterizationSamples = sampleCount,
+		.sampleShadingEnable = vk::False,
+		.minSampleShading = 0.5f,
+		.pSampleMask = nullptr,
+		.alphaToCoverageEnable = vk::False,
+		.alphaToOneEnable = vk::False
 	};
 
 	vk::PipelineColorBlendAttachmentState colourBlendAttachmentState
@@ -773,6 +795,7 @@ void TriangleApp::createTextureImage()
 		texWidth,
 		texHeight,
 		mipLevels,
+		vk::SampleCountFlagBits::e1,
 		vk::Format::eR8G8B8A8Srgb,
 		vk::ImageTiling::eOptimal,
 		vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled,
@@ -942,6 +965,23 @@ vk::Format TriangleApp::findSupportedFormat(const std::vector<vk::Format>& candi
 	throw std::runtime_error("failed to find supported format!");
 }
 
+void TriangleApp::createColorResources()
+{
+	vk::Format colorFormat = swapChainSurfaceFormat.format;
+
+	std::tie(colorImage, colorImageMemory) = createImage(
+		swapChainExtent.width,
+		swapChainExtent.height,
+		1,
+		sampleCount,
+		colorFormat,
+		vk::ImageTiling::eOptimal,
+		vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransientAttachment,
+		vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+	colorImageView = createImageView(colorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
+}
+
 void TriangleApp::createDepthResources()
 {
 	depthFormat = findSupportedFormat({ vk::Format::eD32Sfloat,vk::Format::eD24UnormS8Uint,vk::Format::eD32SfloatS8Uint },
@@ -951,6 +991,7 @@ void TriangleApp::createDepthResources()
 	std::tie(depthImage, depthImageMemory) = createImage(swapChainExtent.width,
 														 swapChainExtent.height,
 														 1,
+														 sampleCount,
 														 depthFormat,
 														 vk::ImageTiling::eOptimal,
 														 vk::ImageUsageFlagBits::eDepthStencilAttachment,
@@ -1001,7 +1042,7 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> TriangleApp::createBuffer(vk
 	return { std::move(buffer), std::move(bufferMemory) };
 }
 
-std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint32_t width,uint32_t height, uint32_t mipLevels, vk::Format format,
+std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint32_t width,uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits numSamples, vk::Format format,
 	vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
 {
 	vk::ImageCreateInfo imageInfo
@@ -1011,7 +1052,7 @@ std::pair<vk::raii::Image, vk::raii::DeviceMemory> TriangleApp::createImage(uint
 		.extent = {width, height, 1},
 		.mipLevels = mipLevels,
 		.arrayLayers = 1,
-		.samples = vk::SampleCountFlagBits::e1,
+		.samples = numSamples,
 		.tiling = tiling,
 		.usage = usage,
 		.sharingMode = vk::SharingMode::eExclusive
@@ -1131,7 +1172,7 @@ void TriangleApp::recreateSwapChain()
 
 	createSwapChain();
 	createImageViews();
-	
+	createColorResources();
 	createDepthResources();
 }
 
@@ -1269,6 +1310,17 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 	);
 
 	transition_image_layout(
+		*colorImage,
+		vk::ImageLayout::eUndefined,
+		vk::ImageLayout::eColorAttachmentOptimal,
+		{},
+		vk::AccessFlagBits2::eColorAttachmentWrite,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+		vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+		vk::ImageAspectFlagBits::eColor
+	);
+
+	transition_image_layout(
 		*depthImage,
 		vk::ImageLayout::eUndefined,
 		vk::ImageLayout::eDepthAttachmentOptimal,
@@ -1281,14 +1333,29 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 
 	vk::ClearValue clearColour = vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f);
 	vk::ClearValue clearDepth =  vk::ClearDepthStencilValue(1.0f, 0);
-	vk::RenderingAttachmentInfo attachmentInfo =
+
+
+
+	vk::RenderingAttachmentInfo colorAttachmentInfo =
 	{
-		.imageView = swapChainImageViews[imageIndex],
+		.imageView = colorImageView,
 		.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+		.resolveMode = vk::ResolveModeFlagBits::eAverage,
+		.resolveImageView = swapChainImageViews[imageIndex],
+		.resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal,
 		.loadOp = vk::AttachmentLoadOp::eClear,
 		.storeOp = vk::AttachmentStoreOp::eStore,
 		.clearValue = clearColour
 	};
+
+	//vk::RenderingAttachmentInfo resolveAttachmentInfo =
+	//{
+	//	.imageView = swapChainImageViews[imageIndex],
+	//	.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+	//	.loadOp = vk::AttachmentLoadOp::eClear,
+	//	.storeOp = vk::AttachmentStoreOp::eStore,
+	//	.clearValue = clearColour
+	//};
 
 	vk::RenderingAttachmentInfo depthAttachmentInfo
 	{
@@ -1304,7 +1371,7 @@ void TriangleApp::recordCommandBuffer(uint32_t imageIndex)
 		.renderArea = {.offset = {0,0}, .extent = swapChainExtent},
 		.layerCount = 1,
 		.colorAttachmentCount = 1,
-		.pColorAttachments = &attachmentInfo,
+		.pColorAttachments = &colorAttachmentInfo,
 		.pDepthAttachment = &depthAttachmentInfo
 	};
 

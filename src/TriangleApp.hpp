@@ -161,12 +161,16 @@ private:
 	vk::raii::ImageView					textureImageView = nullptr;
 	vk::raii::Sampler					textureSampler = nullptr;
 
+	vk::raii::Image						colorImage = nullptr;
+	vk::raii::DeviceMemory				colorImageMemory = nullptr;
+	vk::raii::ImageView					colorImageView = nullptr;
+
 	vk::raii::Image						depthImage = nullptr;
 	vk::raii::DeviceMemory				depthImageMemory = nullptr;
 	vk::raii::ImageView					depthImageView = nullptr;
 	vk::Format							depthFormat;
 
-
+	vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e1;
 
 	std::vector<vk::raii::CommandBuffer>commandBuffers;
 	std::vector<vk::raii::Semaphore>	renderFinishedSemaphores;
@@ -193,6 +197,7 @@ private:
 	void createGraphicsPipeline();
 	void createTextureImage();
 	void createCommandPool();
+	void createColorResources();
 	void createDepthResources();
 	void createCommandBuffers();
 	void createVertexBuffer();
@@ -202,10 +207,11 @@ private:
 	void createDescriptorPool();
 	void createDescriptorSets();
 	void loadModel();
+	vk::SampleCountFlagBits getMaxSampleCount();
 	std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
 	vk::Format findSupportedFormat(const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
 	void endSingleTimeCommands(const vk::raii::CommandBuffer& commandBuffer);
-	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::Format format,
+	std::pair<vk::raii::Image, vk::raii::DeviceMemory> createImage(uint32_t width, uint32_t height, uint32_t mipLevels, vk::SampleCountFlagBits numSamples, vk::Format format,
 		vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
 	std::pair<vk::raii::Buffer, vk::raii::DeviceMemory> createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties);
 	void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size);
